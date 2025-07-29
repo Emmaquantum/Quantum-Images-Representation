@@ -15,13 +15,12 @@ if __name__ == "__main__":
     # Descomenta las siguientes líneas y reemplaza "YOUR_IBM_QUANTUM_TOKEN_HERE"
     # con tu token real si quieres usar un backend real.
     #
-    my_api_token = "oXsng4MZu4ALfuFH6g_ppmzsyY_-Po6jXRm15Zw3toAJ" # Reemplaza con tu token REAL
+    my_api_token = "1kYyQ2iPW8pZdgytl5_A4sXKv2iWUfzPDfHpmWlhaVes" # Reemplaza con tu token REAL
     my_instance = "crn:v1:bluemix:public:quantum-computing:us-east:a/f1d7b6cfa7094a2c8c9b845ca9d29dad:8c25a8bf-915b-4cc9-86bb-5af77c108e01::"
     # simulator.connect_to_ibm_backend(IBM_QUANTUM_TOKEN)
     #
     # Si quieres un backend específico (ej. 'ibm_lagos'), usa:
-    simulator.connect_to_ibm_backend(token=my_api_token, backend_name="ibm_brisbane", channel="ibm_cloud", instance=my_instance)
-
+    simulator.connect_to_ibm_backend(token=my_api_token)
 
     # Ejecuta el circuito (usará el backend de IBM si se conectó, de lo contrario, el simulador local)
     simulator.run()
