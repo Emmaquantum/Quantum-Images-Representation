@@ -1,3 +1,5 @@
+from frqi_mcry_representing import FRQI_MCRY_Simulator
+
 if __name__ == "__main__":
     # Define las intensidades de los píxeles (ej. para una imagen 2x2)
     # [píxel_00, píxel_01, píxel_10, píxel_11]
@@ -5,7 +7,7 @@ if __name__ == "__main__":
 
     # Crea una instancia del simulador
     n = 150000
-    simulator = FRQI_Simulator(intensities=my_intensities, shots=n) # Reducir shots para pruebas rápidas
+    simulator = FRQI_MCRY_Simulator(intensities=my_intensities, shots=n) # Reducir shots para pruebas rápidas
 
     # --- Opcional: Conectar a una computadora cuántica real de IBM ---
     # Necesitarás tu token de API de IBM Quantum Experience.

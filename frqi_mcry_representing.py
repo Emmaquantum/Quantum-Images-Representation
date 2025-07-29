@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from IPython.display import display
 
 # Importaciones de Qiskit
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
@@ -11,11 +12,9 @@ from qiskit.circuit.library import RYGate
 from qiskit.visualization import plot_histogram as qiskit_plot_histogram
 from qiskit.visualization import circuit_drawer
 
-
 # Importaciones para IBM Quantum
 from qiskit_ibm_runtime.exceptions import IBMRuntimeError
-from qiskit_ibm_runtime import QiskitRuntimeService, Sampler, Session
-from IPython.display import display # Necesario para mostrar figuras en notebooks
+from qiskit_ibm_runtime import QiskitRuntimeService, Sampler, Sessio
 
 class FRQI_MCRY_Simulator:
     """
