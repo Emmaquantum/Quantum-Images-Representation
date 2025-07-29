@@ -10,15 +10,15 @@ from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit_aer import Aer
 from qiskit.visualization import plot_histogram
 
-# ## CORRECCIÓN ##: Eliminado 'Session', que no se usa en el plan gratuito.
+# Importaciones para IBM Quantum (Session no se usa en el plan gratuito)
 from qiskit_ibm_runtime import QiskitRuntimeService, Sampler
 from qiskit_ibm_runtime.exceptions import IBMRuntimeError
 
 
 class FRQI_MARY_Simulator:
     """
-    Simulador del algoritmo FRQI (Flexible Representation of Quantum Images)
-    utilizando una implementación personalizada de la puerta multicontrolada.
+    Simulador del algoritmo FRQI usando la implementación MARY del artículo,
+    con los métodos de pre y postprocesamiento corregidos según el estudio.
     """
 
     def __init__(self, intensities=None, max_intensity=255, shots=8000, n=2):
@@ -35,13 +35,12 @@ class FRQI_MARY_Simulator:
 
     def calculate_thetas(self, intensities):
         """
-        ## CORRECCIÓN ##: Se ajustó la fórmula de normalización y de cálculo de thetas
-        a la implementación estándar de FRQI.
+        ## CORRECCIÓN ##
+        Implementa la transformación lineal para convertir intensidades en ángulos,
+        según la Ecuación (8) del artículo.
         """
-        # Normaliza intensidades al rango [0, 1]
-        intensity_norm = [min(1.0, max(0.0, i / self.max_intensity)) for i in intensities]
-        # Calcula thetas con la fórmula FRQI: theta = 2 * arcsin(sqrt(intensidad_normalizada))
-        thetas = [2 * np.arcsin(np.sqrt(i)) for i in intensity_norm]
+        # Normaliza intensidades al rango [0, 1] y aplica la transformación
+        thetas = [(i / self.max_intensity) * (np.pi / 2) for i in intensities]
         return thetas
 
     def connect_to_ibm_backend(self, token: str, backend_name: str = None, channel: str = "ibm_quantum_platform"):
@@ -74,7 +73,7 @@ class FRQI_MARY_Simulator:
             self.backend = None
 
     def mary(self, circ, angle, t, c0, c1):
-      """Implementación de una CCRY-Gate usando CX y RY."""
+      """Implementación de la CCRY-Gate (MARY) del artículo."""
       circ.ry(angle / 4, t)
       circ.cx(c0, t)
       circ.ry(-angle / 4, t)
@@ -85,29 +84,34 @@ class FRQI_MARY_Simulator:
       circ.cx(c1, t)
 
     def apply_global_mary(self, qc, qr):
-      """Aplica la puerta MARY para cada estado de posición."""
-      # Posición |00>: pos1=0, pos0=0
-      qc.x(qr[1])
-      qc.x(qr[2])
-      self.mary(qc, self.thetas[0], qr[0], qr[1], qr[2]) # Control en q1 y q2
-      qc.x(qr[2])
-      qc.x(qr[1])
+      """Aplica la puerta MARY para cada estado de posición de una imagen 2x2."""
+      color_qubit = qr[0]
+      pos_qubit_1 = qr[1]
+      pos_qubit_2 = qr[2]
+
+      # El ángulo para la compuerta Ry en la descomposición FRQI es 2*theta
+      angles = [2 * theta for theta in self.thetas]
+      
+      # Posición |00>
+      qc.x([pos_qubit_1, pos_qubit_2])
+      self.mary(qc, angles[0], color_qubit, pos_qubit_1, pos_qubit_2)
+      qc.x([pos_qubit_1, pos_qubit_2])
       qc.barrier()
 
-      # Posición |01>: pos1=0, pos0=1
-      qc.x(qr[1])
-      self.mary(qc, self.thetas[1], qr[0], qr[1], qr[2])
-      qc.x(qr[1])
+      # Posición |01>
+      qc.x(pos_qubit_1)
+      self.mary(qc, angles[1], color_qubit, pos_qubit_1, pos_qubit_2)
+      qc.x(pos_qubit_1)
       qc.barrier()
 
-      # Posición |10>: pos1=1, pos0=0
-      qc.x(qr[2])
-      self.mary(qc, self.thetas[2], qr[0], qr[1], qr[2])
-      qc.x(qr[2])
+      # Posición |10>
+      qc.x(pos_qubit_2)
+      self.mary(qc, angles[2], color_qubit, pos_qubit_1, pos_qubit_2)
+      qc.x(pos_qubit_2)
       qc.barrier()
 
-      # Posición |11>: pos1=1, pos0=1
-      self.mary(qc, self.thetas[3], qr[0], qr[1], qr[2])
+      # Posición |11>
+      self.mary(qc, angles[3], color_qubit, pos_qubit_1, pos_qubit_2)
       qc.barrier()
 
     def build_circuit(self):
@@ -118,11 +122,9 @@ class FRQI_MARY_Simulator:
         cr = ClassicalRegister(3, name='c')
         qc = QuantumCircuit(qr, cr, name="FRQI_MARY")
 
-        qc.h(qr[1])
-        qc.h(qr[2])
+        qc.h(qr[1:])
         qc.barrier()
 
-        # Aplicar la codificación de la imagen
         self.apply_global_mary(qc, qr)
 
         qc.measure(qr, cr)
@@ -139,7 +141,6 @@ class FRQI_MARY_Simulator:
                 sampler = Sampler(mode=self.backend)
                 transpiled_qc = transpile(self.qc, self.backend)
                 
-                # El método run espera una LISTA de circuitos.
                 job = sampler.run([transpiled_qc], shots=self.shots)
                 print(f"Job ID: {job.job_id()} enviado a {self.backend.name}.")
                 print("Esperando resultados...")
@@ -176,8 +177,9 @@ class FRQI_MARY_Simulator:
 
     def analyze_results(self):
         """
-        ## CORRECCIÓN ##: Se ajustó la lógica de parseo de bits para que sea
-        robusta y consistente con la ejecución anterior.
+        ## CORRECCIÓN ##
+        Analiza los resultados usando la Ecuación (10) del artículo y una
+        lógica de bits estandarizada.
         """
         if self.counts is None:
             raise RuntimeError("Primero debes ejecutar run() para obtener resultados.")
@@ -188,73 +190,45 @@ class FRQI_MARY_Simulator:
         positions_order = ['00', '01', '10', '11'] 
 
         for i, target_pos_str in enumerate(positions_order):
-            filtered_counts = {'0': 0, '1': 0}
+            # Filtra las cuentas para la posición actual
+            counts_pos_0 = 0
+            counts_pos_1 = 0
             
             for bitstring, count in self.counts.items():
-                # El bitstring es 'c2c1c0'. c0 es el qubit de color q0.
-                color_bit = bitstring[-1]
-                # La posición la dan q1 y q2 (c1 y c2).
-                current_pos_str = bitstring[1] + bitstring[0]
-
-                if current_pos_str == target_pos_str:
-                    filtered_counts[color_bit] += count
-
-            total = sum(filtered_counts.values())
+                # bitstring es 'c2c1c0'. La posición es 'c1c2'.
+                pos_str = bitstring[1] + bitstring[0]
+                
+                if pos_str == target_pos_str:
+                    # c0 es el qubit de color
+                    if bitstring[-1] == '0':
+                        counts_pos_0 += count
+                    else:
+                        counts_pos_1 += count
+            
+            total_counts_pos = counts_pos_0 + counts_pos_1
             print(f"\nPosición |{target_pos_str}⟩ (de q1q2):")
 
-            if total > 0:
-                p0 = filtered_counts.get('0', 0) / total
-                p1 = filtered_counts.get('1', 0) / total
-            else:
-                p0, p1 = 0.0, 0.0
+            reconstructed_intensity = 0
+            if total_counts_pos > 0:
+                # Probabilidad condicional de medir el color 0 en esta posición
+                p_c0 = counts_pos_0 / total_counts_pos
                 
-            reconstructed_intensity_norm = np.sqrt(p1)
-            reconstructed_intensity = reconstructed_intensity_norm * self.max_intensity
+                # Fórmula de recuperación (Ecuación 10 del artículo)
+                # v_out = arccos(sqrt(P(c=0))) * (2/pi) * 255
+                # Se añade un clip para evitar errores de dominio en arccos por el ruido
+                term_inside_arccos = np.sqrt(p_c0)
+                term_inside_arccos = np.clip(term_inside_arccos, 0, 1) # Evita que sea > 1
+                
+                theta_reconstructed = np.arccos(term_inside_arccos)
+                reconstructed_intensity = int(round(theta_reconstructed * (2 / np.pi) * self.max_intensity))
+                
+                print(f"   Prob(color=0): {p_c0:.4f}")
+                print(f"   Intensidad reconstruida: {reconstructed_intensity}")
 
             self.results[target_pos_str] = {
-                'p0': p0,
-                'p1': p1,
-                'reconstructed_intensity': int(round(reconstructed_intensity))
+                'reconstructed_intensity': reconstructed_intensity
             }
-
-            print(f"   Probabilidad de medir |0⟩ en el qubit de color: {p0:.4f}")
-            print(f"   Probabilidad de medir |1⟩ en el qubit de color: {p1:.4f}")
-            print(f"   Intensidad reconstruida: {reconstructed_intensity:.2f}")
             
-    # El resto de métodos de ploteo y visualización no requieren cambios
-    # y son compatibles con las correcciones hechas.
-    
-    def plot_histogram(self):
-        if self.counts is None:
-            raise RuntimeError("Primero debes ejecutar run() para obtener resultados.")
-        plt.figure(figsize=(12, 7))
-        plot_histogram(self.counts, title='Resultados de la Medición en Backend')
-        plt.show()
-
-    def plot_probabilities(self):
-        if self.counts is None:
-            raise RuntimeError("Primero debes ejecutar run() para obtener resultados.")
-        
-        total_shots = sum(self.counts.values())
-        if total_shots == 0:
-            print("No hay cuentas para graficar probabilidades.")
-            return
-            
-        probabilities = {k: v / total_shots for k, v in self.counts.items()}
-        
-        plt.figure(figsize=(12, 7))
-        ax = sns.barplot(x=list(probabilities.keys()), y=list(probabilities.values()))
-
-        for container in ax.containers:
-            ax.bar_label(container, fmt='%.4f', label_type='edge')
-
-        plt.title('Probabilidades de Medición por Estado')
-        plt.ylabel('Probabilidad')
-        plt.xlabel('Estado Medido (q2q1q0)')
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        plt.show()
-
     def reconstruct_image(self):
         if not self.results:
             raise RuntimeError("Primero debes ejecutar analyze_results() para obtener resultados.")
@@ -280,23 +254,21 @@ class FRQI_MARY_Simulator:
         plt.tight_layout()
         plt.show()
 
+    # El resto de métodos de ploteo y visualización no requieren cambios
+    def plot_histogram(self):
+        if self.counts is None:
+            raise RuntimeError("Primero debes ejecutar run() para obtener resultados.")
+        plt.figure(figsize=(12, 7))
+        plot_histogram(self.counts, title='Resultados de la Medición en Backend')
+        plt.show()
+
     def print_state_table(self):
         positions = ['00', '01', '10', '11']
-        
-        intensity_norm = [i / self.max_intensity for i in self.intensities]
-        cos_vals = [round(np.sqrt(1 - i), 5) for i in intensity_norm]
-        sin_vals = [round(np.sqrt(i), 5) for i in intensity_norm]
         
         data = {
             'Posición |ij>': [f'$|{p}>$' for p in positions],
             'Intensidad': [f'{i:.0f}' for i in self.intensities],
-            'Int. Norm. ($I_n$)': [f'{i_n:.3f}' for i_n in intensity_norm],
-            '$\sqrt{1-I_n}$': [f'{c:.5f}' for c in cos_vals],
-            '$\sqrt{I_n}$': [f'{s:.5f}' for s in sin_vals],
-            'Estado de Color Esperado': [
-                f"$({cos_vals[i]}|0> + {sin_vals[i]}|1>)$"
-                for i in range(4)
-            ]
+            'Ángulo $θ_i$ (rad)': [f'{theta:.4f}' for theta in self.thetas]
         }
         df = pd.DataFrame(data)
         pd.set_option('display.max_columns', None)
@@ -310,3 +282,30 @@ class FRQI_MARY_Simulator:
         from qiskit.visualization import circuit_drawer
         print(f"\n--- Dibujando el Circuito Cuántico ---")
         display(circuit_drawer(self.qc, output=output, idle_wires=False))
+
+    def plot_probabilities(self):
+        """
+        Genera un gráfico de barras mostrando las probabilidades de cada estado medido.
+        """
+        if self.counts is None:
+            raise RuntimeError("Primero debes ejecutar run() para obtener resultados.")
+
+        total_shots = sum(self.counts.values())
+        if total_shots == 0:
+            print("No hay cuentas para graficar probabilidades.")
+            return
+
+        probabilities = {k: v / total_shots for k, v in self.counts.items()}
+
+        plt.figure(figsize=(12, 7))
+        ax = sns.barplot(x=list(probabilities.keys()), y=list(probabilities.values()))
+
+        for container in ax.containers:
+            ax.bar_label(container, fmt='%.4f', label_type='edge')
+
+        plt.title('Probabilidades de Medición por Estado')
+        plt.ylabel('Probabilidad')
+        plt.xlabel('Estado Medido (q2q1q0)')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.show()
