@@ -2,11 +2,12 @@
 #Python usado 3.13.2
 
 # Qiskit y componentes principales
+qiskit[all]~=2.1.1
 qiskit[visualization]>=1.0
 qiskit-aer>=0.13
 
 # IBM Runtime (para conexión a computadoras cuánticas reales)
-qiskit-ibm-runtime>=0.20
+qiskit-ibm-runtime~=0.40.1
 qiskit-ibm-provider>=0.8
 
 # Visualización avanzada y soporte LaTeX

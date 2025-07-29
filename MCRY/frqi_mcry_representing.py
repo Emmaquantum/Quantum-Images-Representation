@@ -16,6 +16,7 @@ from qiskit.visualization import circuit_drawer
 from qiskit_ibm_runtime import QiskitRuntimeService, Sampler, Session
 from qiskit_ibm_runtime.exceptions import IBMRuntimeError
 
+
 #Apagar algo
 from importlib.metadata import version
 version("qiskit")
@@ -81,54 +82,38 @@ class FRQI_MCRY_Simulator:
         thetas = [2 * np.arcsin(i) for i in intensity_norm]
         return thetas
 
-    def connect_to_ibm_backend(self, token: str, instance: str, backend_name: str = None):
+    def connect_to_ibm_backend(self, token: str, backend_name: str = None, channel: str = "ibm_quantum_platform"):
         """
-        Conecta a IBM Quantum Platform usando QiskitRuntimeService (2025+).
-
-        Args:
-            token (str): API token válido de la nueva IBM Quantum Platform.
-            instance (str): CRN de instancia proporcionado por IBM Cloud.
-            backend_name (str, optional): Nombre del backend (por ejemplo, 'ibm_oslo').
+        ## ACTUALIZACIÓN JULIO 2025 ##
+        Conecta al servicio IBM Quantum.
+        El 'channel' por defecto es ahora 'ibm_quantum_platform', que unifica
+        el acceso gratuito (Open Plan) y de pago. El antiguo 'ibm_quantum' está obsoleto.
         """
         try:
-            self.service = QiskitRuntimeService(
-                channel="ibm_cloud",
-                token=token,
-                instance=instance
-            )
-            print("✅ Conexión establecida con IBM Quantum Platform (ibm_cloud).")
+            self.service = QiskitRuntimeService(channel=channel, token=token)
+            print(f"✅ Conexión establecida con IBM Quantum Platform (canal: {channel}).")
 
             if backend_name:
-                self.backend_object = self.service.backend(backend_name)
-                self.backend = backend_name
-                print(f"🧠 Backend seleccionado: {self.backend_object.name}")
-                print(f"💡 Qubits disponibles: {self.backend_object.num_qubits}")
-                print(f"⌛ Jobs pendientes: {self.backend_object.status().pending_jobs}")
+                self.backend = self.service.backend(backend_name)
             else:
-                backends = self.service.backends(simulator=False)
-                real_backends = []
-                for b in backends:
-                    try:
-                        status_msg = b.status().status_msg
-                        if b.num_qubits >= 3 and status_msg.lower() == "active":
-                            real_backends.append(b)
-                    except Exception as e:
-                        print(f"⚠️ No se pudo obtener el estado de {b.name}: {e}")
-
-                if not real_backends:
-                    print("❌ No hay backends cuánticos reales disponibles.")
-                    return
-
-                best = sorted(real_backends, key=lambda b: b.status().pending_jobs)[0]
-                self.backend = best.name
-                self.backend_object = best
-                print(f"✅ Backend cuántico menos ocupado seleccionado: {best.name}")
+                # Lógica para encontrar el mejor backend disponible
+                backends = self.service.backends(simulator=False, operational=True)
+                real_backends = [b for b in backends if b.num_qubits >= 3]
+                if real_backends:
+                    self.backend = sorted(real_backends, key=lambda b: b.status().pending_jobs)[0]
+                else:
+                    raise RuntimeError("No hay backends cuánticos reales disponibles con ≥ 3 qubits.")
+            
+            print(f"🔌 Backend seleccionado: {self.backend.name} (Trabajos pendientes: {self.backend.status().pending_jobs})")
 
         except IBMRuntimeError as e:
-            print("❌ Error al conectar con IBM Quantum Platform:", e)
+            print(f"❌ Error al conectar con IBM Quantum Platform: {e}")
+            self.service = None
+            self.backend = None
         except Exception as e:
-            print("❌ Error inesperado:", e)
-
+            print(f"❌ Ocurrió un error inesperado durante la conexión: {e}")
+            self.service = None
+            self.backend = None    
 
     def build_circuit(self):
         """
@@ -175,50 +160,58 @@ class FRQI_MCRY_Simulator:
 
         # Medir todos los qubits y almacenar los resultados en los registros clásicos
         qc.measure(qr, cr)
-        self.qc = qc
+        self.qc = qc 
 
     def run(self):
         self.build_circuit()
+        self.counts = None
+
         if self.backend and self.service:
-            print(f"\nEjecutando en el backend de IBM Quantum: {self.backend} con {self.shots} shots (usando Sampler)...")
+            print(f"\nEjecutando en el backend de IBM: {self.backend.name} con {self.shots} shots...")
             try:
+                # Se inicializa el Sampler especificando el 'mode' de ejecución.
+                sampler = Sampler(mode=self.backend)
                 
+                transpiled_qc = transpile(self.qc, self.backend)
+
+                # ## CORRECCIÓN FINAL ##
+                # El método run espera una LISTA de circuitos.
+                job = sampler.run([transpiled_qc], shots=self.shots)
+                print(f"Job ID: {job.job_id()} enviado a {self.backend.name}.")
+                print("Esperando resultados...")
                 
-                with Session(backend=self.backend_object) as session:
-                    sampler = Sampler()
-                    job = sampler.run(
-                        circuits=self.qc,
-                        shots=self.shots,
-                        backend=self.backend_object,
-                        service=self.service
-                    )
-                    print(f"Trabajo enviado. ID del trabajo: {job.job_id}")
-                    print("Esperando resultados... Esto puede tomar un tiempo (puedes verificar el estado en https://quantum.ibm.com/jobs).")
-                    result = job.result()
-                    self.counts = result[0].data.meas.get_counts()
-                    print("Resultados obtenidos del backend de IBM Quantum:")
-                    print(self.counts)
+                result = job.result()
+                
+                # Como enviamos una lista con un circuito, obtenemos el primer resultado.
+                pub_result = result[0]
+                self.counts = pub_result.data.c.get_counts()
+
+                print("✅ Resultados obtenidos del backend de IBM:")
+                print(self.counts)
+
             except Exception as e:
-                print(f"Error al ejecutar en el backend de IBM Quantum: {e}")
-                print("Volviendo al simulador local.")
-                self.backend = None
-                self.backend_object = None
+                print(f"❌ Error al ejecutar en el backend de IBM: {e}")
+                print("⚠️ Volviendo al simulador local.")
                 self._run_local_simulator()
         else:
-            print("\nEjecutando en el simulador QASM local...")
+            print("\nBackend de IBM no disponible. Ejecutando en el simulador QASM local...")
             self._run_local_simulator()
 
-    
     def _run_local_simulator(self):
-        """Método interno para ejecutar en el simulador QASM local."""
-        sim = Aer.get_backend('qasm_simulator')
-        # For local simulators, you often need to transpile yourself if you want to optimize for a specific device model.
-        # But for basic qasm_simulator, direct execution is fine.
-        compiled = transpile(self.qc, sim) # Still good practice for consistency
-        result = sim.run(compiled, shots=self.shots).result()
-        self.counts = result.get_counts(self.qc)
-        print("Resultados obtenidos del simulador local:")
-        print(self.counts)
+        """
+        Ejecuta el circuito cuántico en el simulador QASM local de Qiskit Aer.
+        """
+        try:
+            simulator = Aer.get_backend('qasm_simulator')
+            transpiled_qc = transpile(self.qc, simulator)
+            job = simulator.run(transpiled_qc, shots=self.shots)
+            result = job.result()
+            self.counts = result.get_counts(transpiled_qc) 
+            print("✅ Resultados obtenidos del simulador QASM local:")
+            print(self.counts)
+        except Exception as e:
+            print(f"❌ Error al ejecutar en el simulador local: {e}")
+            self.counts = {} # Asegura que self.counts sea un diccionario vacío si el simulador falla
 
     def analyze_results(self):
         """
