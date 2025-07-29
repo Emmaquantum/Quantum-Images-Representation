@@ -13,7 +13,7 @@ from qiskit.visualization import plot_histogram as qiskit_plot_histogram
 from qiskit.visualization import circuit_drawer
 
 # Importaciones para IBM Quantum (nueva plataforma 2025+)
-from qiskit_ibm_runtime import QiskitRuntimeService, Sampler, Session
+from qiskit_ibm_runtime import QiskitRuntimeService, Sampler
 from qiskit_ibm_runtime.exceptions import IBMRuntimeError
 
 #Apagar algo
@@ -22,7 +22,7 @@ version("qiskit")
 
 
 
-class FRQI_MCRY_Simulator:
+class FRQI_MARY_Simulator:
     """
     Simulador del algoritmo FRQI (Flexible Representation of Quantum Images).
 
@@ -129,86 +129,109 @@ class FRQI_MCRY_Simulator:
         except Exception as e:
             print("❌ Error inesperado:", e)
 
+    def mary(self,circ, angle, t, c0, c1):
+      circ.ry(angle / 4, t)
+      circ.cx(c0, t)
+      circ.ry(-angle / 4, t)
+      circ.cx(c1, t)
+      circ.ry(angle / 4, t)
+      circ.cx(c0, t)
+      circ.ry(-angle / 4, t)
+      circ.cx(c1, t)
+
+    def apply_global_mary(self, qc, qr):
+      # Posición 00: pos0 = 0, pos1 = 0
+      qc.x(qr[1])  # X en pos1
+      qc.x(qr[2])  # X en pos0
+      self.mary(qc, 2 * self.thetas[0], qr[0], qr[2], qr[1])  # color, pos0, pos1
+      qc.x(qr[2])
+      qc.x(qr[1])
+
+      # Posición 01: pos0 = 1, pos1 = 0
+      qc.x(qr[1])  # X en pos1
+      self.mary(qc, 2 * self.thetas[1], qr[0], qr[2], qr[1])
+      qc.x(qr[1])
+
+      # Posición 10: pos0 = 0, pos1 = 1
+      qc.x(qr[2])  # X en pos0
+      self.mary(qc, 2 * self.thetas[2], qr[0], qr[2], qr[1])
+      qc.x(qr[2])
+
+      # Posición 11: pos0 = 1, pos1 = 1 (ya está en |1⟩ por defecto)
+      self.mary(qc, 2 * self.thetas[3], qr[0], qr[2], qr[1])
 
     def build_circuit(self):
         """
-        Construye el circuito cuántico FRQI.
+        Construye el circuito cuántico FRQI utilizando la puerta MARY.
 
         El circuito utiliza 3 qubits:
         - q[0]: qubit de color (intensidad)
         - q[1], q[2]: qubits de posición (para 4 píxeles, 2x2 imagen)
         """
         # Crear registros cuánticos y clásicos
-        qr = QuantumRegister(3, name='q')
-        cr = ClassicalRegister(3, name='c')
-        qc = QuantumCircuit(qr, cr, name="FRQI_MRCY")
+        qr = self.QuantumRegister(3, name='q')
+        cr = self.ClassicalRegister(3, name='c')
+        qc = self.QuantumCircuit(qr, cr, name="FRQI_MARY")
 
         # Aplicar Hadamard a los qubits de posición para crear superposición
-        qc.h(qr[1])  # pos1 (q[1] es el MSB de la posición)
-        qc.h(qr[2])  # pos0 (q[2] es el LSB de la posición)
+        qc.h(qr[1])  # pos1
+        qc.h(qr[2])  # pos0
 
-        # Los qubits de control son q[1] (más significativo) y q[2] (menos significativo)
-        control_qubits = [qr[1], qr[2]]
-        # El qubit objetivo es q[0]
-        target_qubit = qr[0]
-
-        # Iterar sobre cada píxel (posición) y aplicar la rotación RY controlada
-        for i, theta in enumerate(self.thetas):
-
-            bin_str = format(i, '02b')
-            control_state = bin_str[0] + bin_str[1] # pos1_bit + pos0_bit
-
-            if bin_str[0] == '0':
-                qc.x(qr[1]) # Invertir q[1] si su bit de control es '0'
-            if bin_str[1] == '0':
-                qc.x(qr[2]) # Invertir q[2] si su bit de control es '0'
-
-            mary_gate = RYGate(theta).control(len(control_qubits))
-            qc.append(mary_gate, control_qubits + [target_qubit])
-
-
-            # Deshacer las puertas X aplicadas para la selección de posición
-            if bin_str[0] == '0':
-                qc.x(qr[1])
-            if bin_str[1] == '0':
-                qc.x(qr[2])
+        # Implementación de la puerta MARY
+        # Paso 2: Aplicar MARY(2θᵢ) en cada posición i (0 a 3)
+        self.apply_global_mary(qc, qr)
 
         # Medir todos los qubits y almacenar los resultados en los registros clásicos
         qc.measure(qr, cr)
         self.qc = qc
 
     def run(self):
-        self.build_circuit()
+        """
+        Ejecuta el circuito cuántico FRQI en el backend seleccionado.
+        Si se ha conectado a un backend de IBM Quantum, lo usa; de lo contrario,
+        usa el simulador QASM local.
+        """
+        self.build_circuit() # Primero construye el circuito
+
+        # Verificar si un nombre de backend (self.backend) y el servicio están inicializados
         if self.backend and self.service:
             print(f"\nEjecutando en el backend de IBM Quantum: {self.backend} con {self.shots} shots (usando Sampler)...")
             try:
-                
-                
-                with Session(backend=self.backend_object) as session:
-                    sampler = Sampler()
-                    job = sampler.run(
-                        circuits=self.qc,
-                        shots=self.shots,
-                        backend=self.backend_object,
-                        service=self.service
-                    )
-                    print(f"Trabajo enviado. ID del trabajo: {job.job_id}")
-                    print("Esperando resultados... Esto puede tomar un tiempo (puedes verificar el estado en https://quantum.ibm.com/jobs).")
-                    result = job.result()
-                    self.counts = result[0].data.meas.get_counts()
-                    print("Resultados obtenidos del backend de IBM Quantum:")
-                    print(self.counts)
+                # 1. Inicializa SamplerV2 SIN ARGUMENTOS en el constructor.
+                # Esto es lo que el error 'unexpected keyword argument service' nos ha dicho.
+                sampler = Sampler() # <--- ¡Aquí está la clave! Constructor vacío.
+
+                # 2. Pasa el circuito, los shots, el backend Y el servicio al método .run().
+                # Esto es lo que el error 'A backend or session must be specified.' nos ha dicho.
+                job = sampler.run(
+                    circuits=self.qc,  # El circuito (o lista de circuitos)
+                    shots=self.shots,  # El número de mediciones
+                    backend=self.backend, # El nombre del backend (string)
+                    service=self.service # ¡Tu instancia QiskitRuntimeService!
+                )
+
+                print(f"Trabajo enviado. ID del trabajo: {job.job_id}")
+                print("Esperando resultados... Esto puede tomar un tiempo (puedes verificar el estado en https://quantum.ibm.com/jobs).")
+
+                result = job.result()
+                # SamplerV2 devuelve los resultados en un formato ligeramente diferente.
+                # result[0] es para el primer (y único) circuito en la lista.
+                # .data.meas.get_counts() es la forma correcta de obtener las cuentas para SamplerV2.
+                self.counts = result[0].data.meas.get_counts()
+
+                print("Resultados obtenidos del backend de IBM Quantum:")
+                print(self.counts)
             except Exception as e:
                 print(f"Error al ejecutar en el backend de IBM Quantum: {e}")
                 print("Volviendo al simulador local.")
-                self.backend = None
-                self.backend_object = None
-                self._run_local_simulator()
+                self.backend = None # Reiniciar backend para usar simulador local
+                self.backend_object = None # Reiniciar también el objeto backend
+                self._run_local_simulator() # Reintentar con simulador local
         else:
+            # Si no hay backend de IBM Quantum o hubo un error, usa el simulador local
             print("\nEjecutando en el simulador QASM local...")
             self._run_local_simulator()
 
-    
     def _run_local_simulator(self):
         """Método interno para ejecutar en el simulador QASM local."""
         sim = Aer.get_backend('qasm_simulator')
