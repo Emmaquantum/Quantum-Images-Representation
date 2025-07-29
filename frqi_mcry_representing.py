@@ -12,9 +12,13 @@ from qiskit.circuit.library import RYGate
 from qiskit.visualization import plot_histogram as qiskit_plot_histogram
 from qiskit.visualization import circuit_drawer
 
-# IBMProvider para conexión gratuita
-from qiskit_ibm_provider import IBMProvider
-from qiskit_ibm_provider.exceptions import IBMProviderError
+# Importaciones para IBM Quantum (nueva plataforma 2025+)
+from qiskit_ibm_runtime import QiskitRuntimeService
+from qiskit_ibm_runtime.exceptions import IBMRuntimeError
+
+#Apagar algo
+from importlib.metadata import version
+version("qiskit")
 
 
 
@@ -77,38 +81,42 @@ class FRQI_MCRY_Simulator:
         thetas = [2 * np.arcsin(i) for i in intensity_norm]
         return thetas
 
-    def connect_to_ibm_backend(self, token: str, backend_name: str = None):
+    def connect_to_ibm_backend(self, token: str, instance: str, backend_name: str = None):
         """
-        Conecta con IBM Quantum (GRATIS) usando IBMProvider.
+        Conecta a IBM Quantum Platform usando QiskitRuntimeService (2025+).
+
+        Args:
+            token (str): API token válido de la nueva IBM Quantum Platform.
+            instance (str): CRN de instancia proporcionado por IBM Cloud.
+            backend_name (str, optional): Nombre del backend (por ejemplo, 'ibm_oslo').
         """
         try:
-            self.provider = IBMProvider(token=token)
-            print("✅ Conectado correctamente con IBMProvider (canal gratuito).")
+            self.service = QiskitRuntimeService(
+                channel="ibm_cloud",
+                token=token,
+                instance=instance
+            )
+            print("✅ Conexión establecida con IBM Quantum Platform (ibm_cloud).")
 
             if backend_name:
-                backend = self.provider.get_backend(backend_name)
-                if backend.configuration().simulator:
-                    print(f"⚠️ '{backend_name}' es un simulador. Usa un backend cuántico real como 'ibmq_lima'.")
-                    self.backend = None
-                    return
+                self.backend_object = self.service.backend(backend_name)
+                self.backend = backend_name
+                print(f"🧠 Backend seleccionado: {self.backend_object.name}")
+                print(f"💡 Qubits disponibles: {self.backend_object.num_qubits}")
+                print(f"⌛ Jobs pendientes: {self.backend_object.status().pending_jobs}")
             else:
-                # Selecciona automáticamente el backend cuántico real menos ocupado con al menos 3 qubits
-                backends = self.provider.backends(simulator=False, operational=True)
-                real_backends = [b for b in backends if b.configuration().n_qubits >= 3]
+                backends = self.service.backends(simulator=False)
+                real_backends = [b for b in backends if b.num_qubits >= 3 and b.operational]
                 if not real_backends:
-                    print("❌ No se encontraron backends reales disponibles.")
+                    print("❌ No hay backends cuánticos reales disponibles.")
                     return
-                backend = sorted(real_backends, key=lambda b: b.status().pending_jobs)[0]
+                best = sorted(real_backends, key=lambda b: b.status().pending_jobs)[0]
+                self.backend = best.name
+                self.backend_object = best
+                print(f"✅ Backend cuántico menos ocupado seleccionado: {best.name}")
 
-            self.backend = backend.name
-            self.backend_object = backend
-
-            print(f"🧠 Backend seleccionado: {backend.name}")
-            print(f"💡 Qubits: {backend.configuration().n_qubits}")
-            print(f"⌛ Jobs pendientes: {backend.status().pending_jobs}")
-
-        except IBMProviderError as e:
-            print("❌ Error al conectarse con IBMProvider:", e)
+        except IBMRuntimeError as e:
+            print("❌ Error al conectar con IBM Quantum Platform:", e)
         except Exception as e:
             print("❌ Error inesperado:", e)
 
