@@ -115,23 +115,38 @@ class FRQI_MCRY_Simulator:
             self.service = None
             self.backend = None
 
-    def cu_gate_decomposition(self, qc, theta, phi, lam, control_qubit, target_qubit):
+    def mcry_decomposition(self, qc, theta, control_qubits, target_qubit):
         """
-        Construye una puerta de rotación U controlada (CU)
-        usando puertas CX y rotaciones de un solo qubit.
-    
+        Implementa una compuerta MCRy (Multi-Controlled Ry) 
+        basada en la descomposición mostrada en la imagen.
+
         Args:
             qc (QuantumCircuit): El circuito cuántico.
-            theta (float): Ángulo de rotación theta.
-            phi (float): Ángulo de rotación phi.
-            lam (float): Ángulo de rotación lambda.
-            control_qubit (int): Índice del qubit de control.
-            target_qubit (int): Índice del qubit objetivo.
+            theta (float): El ángulo de rotación de la compuerta Ry.
+            control_qubits (list): Una lista de los qubits de control.
+            target_qubit (int): El índice del qubit objetivo.
         """
-        qc.p(lam, target_qubit)
-        qc.cx(control_qubit, target_qubit)
-        qc.p(-lam, target_qubit)
-        qc.u(theta, phi, lam, target_qubit) 
+        if len(control_qubits) != 2:
+            raise ValueError("Esta implementación es solo para 2 qubits de control.")
+
+        # Descomposición de la compuerta MCRy
+        # Los ángulos de las compuertas U son: U(theta, phi, lambda)
+        # donde phi y lambda son 0 en este caso.
+
+        # Primera compuerta U
+        qc.u(theta, 0, 0, control_qubits[0])
+
+        # Primera compuerta CX
+        qc.cx(control_qubits[0], control_qubits[1])
+
+        # Segunda compuerta U
+        qc.u(-theta, 0, 0, control_qubits[1])
+
+        # Segunda compuerta CX
+        qc.cx(control_qubits[0], control_qubits[1])
+
+        # Tercera compuerta U
+        qc.u(theta, 0, 0, control_qubits[0])
 
     def build_circuit(self):
         """
@@ -150,17 +165,22 @@ class FRQI_MCRY_Simulator:
         qc.h(qr[1])  # pos1 (q[1] es el MSB de la posición)
         qc.h(qr[2])  # pos0 (q[2] es el LSB de la posición)
 
-        x_flips = [False, True, True, False] # True means qc.x() is applied
-        angles = [(theta, 0, 0) for theta in self.thetas]
-
-        # --- Bucle con la puerta CU ---
-        for i, (theta, phi, lam) in enumerate(angles):
-            # Aplica qc.x(qr[1]) si es necesario
+        # --- Bucle para aplicar la descomposición ---
+        for i, theta in enumerate(thetas):
+            # Aplica qc.x(qr[1]) si es necesario, basado en el x_flips original
             if x_flips[i]:
                 qc.x(qr[1])
 
-            # Aplica la puerta CU con la función definida arriba
-            self.cu_gate_decomposition(qc, theta, phi, lam, qr[0], qr[2])
+            # Llamar a la función de descomposición para cada ángulo
+            # Asume que los qubits de control son qr[0] y qr[1], y el objetivo es qr[2]
+            # La descomposición de la imagen usa dos qubits de control y un objetivo
+            # Sin embargo, la imagen muestra solo dos qubits en total, lo cual es confuso.
+            # El código se adapta para una compuerta controlada estándar (como en la imagen).
+    
+            # La imagen es una CU (Controlled-U) que opera sobre dos qubits.
+            # El qubit de control es 'gray value' y el objetivo 'pos_0'.
+            self.mcry_decomposition(qc, theta, qr[0], qr[1])
+
 
         # Medir todos los qubits y almacenar los resultados en los registros clásicos
         qc.barrier(qr)
