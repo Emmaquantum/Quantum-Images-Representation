@@ -25,7 +25,7 @@ version("qiskit")
 
 class FRQI_MCRY_Simulator:
     """
-    Simulador del algoritmo FRQI (Flexible Representation of Quantum Images).
+    Simulador del algoritmo FRQI (Flexible Representation of Quantum Images) con corrección de errores de 3 qubits.
 
     Esta clase permite codificar una imagen (representada por intensidades de píxeles)
     en un circuito cuántico utilizando la codificación FRQI, ejecutar el circuito
@@ -147,34 +147,59 @@ class FRQI_MCRY_Simulator:
         
     def build_circuit(self):
         """
-        Construye el circuito cuántico FRQI.
+        Construye el circuito cuántico FRQI con corrección de errores de 3 qubits.
 
-        El circuito utiliza 3 qubits:
-        - q[0]: qubit de color (intensidad)
+        El circuito ahora usa 5 qubits:
+        - q[0], q[3], q[4]: qubits de color codificados (q[0] es el lógico)
         - q[1], q[2]: qubits de posición (para 4 píxeles, 2x2 imagen)
         """
         # Crear registros cuánticos y clásicos
-        qr = QuantumRegister(3, name='q')
-        cr = ClassicalRegister(3, name='c')
-        qc = QuantumCircuit(qr, cr, name="FRQI_MRCY")
+        qr = QuantumRegister(5, name='q')  # 5 qubits
+        cr = ClassicalRegister(3, name='c')  # 3 bits clásicos para la medición final
+        
+        # 2 bits clásicos adicionales para el síndrome (q[3] y q[4])
+        cr_syndrome = ClassicalRegister(2, name='syndrome') 
+        qc = QuantumCircuit(qr, cr_syndrome, cr, name="FRQI_MCRY_QEC")
 
+        # --- Parte 1: Codificación de Estado FRQI ---
+        
         # Aplicar Hadamard a los qubits de posición para crear superposición
         qc.h(qr[1])  # pos1 (q[1] es el MSB de la posición)
         qc.h(qr[2])  # pos0 (q[2] es el LSB de la posición)
 
+        # Codificación del qubit de color q[0] en 3 qubits físicos (q[0], q[3], q[4])
+        qc.cx(qr[0], qr[3])
+        qc.cx(qr[0], qr[4])
+
+        # --- Parte 2: Aplicación de la compuerta FRQI con MC-RY ---
+        # Esta compuerta debe aplicarse a la representación lógica del estado
+        
+        # Aquí simplificamos aplicando la compuerta a los 3 qubits físicos.
+        # En una implementación real, se usarían compuertas tolerantes a fallos.
         control_qubits = [qr[1], qr[2]]
-        target_qubit = qr[0]
-
-        for i,theta in enumerate(self.thetas):
-
+        
+        for i, theta in enumerate(self.thetas):
             self.mcry_gate(
-                qc = qc, 
-                theta = 2*theta, 
-                control_qubits = control_qubits,
-                target_qubit = target_qubit
+                qc=qc,
+                theta=2*theta,
+                control_qubits=control_qubits,
+                target_qubit=qr[0]
             )
-
-            # Apply X gates based on the image's pattern.
+            # Replicar la operación en los qubits de codificación
+            self.mcry_gate(
+                qc=qc,
+                theta=2*theta,
+                control_qubits=control_qubits,
+                target_qubit=qr[3]
+            )
+            self.mcry_gate(
+                qc=qc,
+                theta=2*theta,
+                control_qubits=control_qubits,
+                target_qubit=qr[4]
+            )
+            
+            # Aplicar X gates basados en el patrón de la imagen.
             if i == 0:
                 qc.x(qr[1])
             elif i == 1:
@@ -183,9 +208,28 @@ class FRQI_MCRY_Simulator:
             elif i == 2:
                 qc.x(qr[1])
 
-        # Medir todos los qubits y almacenar los resultados en los registros clásicos
+        # --- Parte 3: Detección y corrección de errores (Decodificación) ---
+        qc.barrier()
+        
+        # Síndrome de medición
+        qc.cx(qr[0], qr[3])
+        qc.cx(qr[0], qr[4])
+        qc.measure([qr[3], qr[4]], [cr_syndrome[0], cr_syndrome[1]])
+
+        # Corrección de errores
+        with qc.if_test((cr_syndrome, 1)):
+            qc.x(qr[0])
+        with qc.if_test((cr_syndrome, 2)):
+            qc.x(qr[3])
+        with qc.if_test((cr_syndrome, 3)):
+            qc.x(qr[4])
+
+        # Medición final de los qubits
         qc.barrier(qr)
-        qc.measure(qr, cr)
+        qc.measure(qr[0], cr[0])
+        qc.measure(qr[1], cr[1])
+        qc.measure(qr[2], cr[2])
+
         self.qc = qc 
 
     def run(self):
@@ -228,7 +272,7 @@ class FRQI_MCRY_Simulator:
         Ejecuta el circuito cuántico en el simulador QASM local de Qiskit Aer.
         """
         try:
-            simulator = Aer.get_backend('qasm_simulator')
+            simulator = Aer.get_backend('aer_simulator') # <-- AQUI ESTA EL CAMBIO
             transpiled_qc = transpile(self.qc, simulator)
             job = simulator.run(transpiled_qc, shots=self.shots)
             result = job.result()
@@ -412,7 +456,7 @@ class FRQI_MCRY_Simulator:
         print("\nTabla de Estados Esperados (Ideal):")
         print(df.to_string(index=False))
 
-    def draw_circuit(self, output='mpl', filename='quantum_circuit.png', style=None):
+    def draw_circuit(self, output='mpl', filename='quantum_circuit_corr.png', style=None):
         """
         Dibuja el circuito cuántico y lo guarda en un archivo.
 
