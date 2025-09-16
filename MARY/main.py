@@ -5,7 +5,7 @@ if __name__ == "__main__":
     my_intensities = [20, 60, 120, 240]
 
     # Crea una instancia del simulador
-    n_shots = 8192
+    n_shots = 100000 #8192
     simulator = FRQI_MARY_Simulator(intensities=my_intensities, shots=n_shots)
 
     # --- Conexión a una computadora cuántica real de IBM (Actualizado 2025) ---
@@ -16,12 +16,13 @@ if __name__ == "__main__":
     my_instance = "crn:v1:bluemix:public:quantum-computing:us-east:a/f1d7b6cfa7094a2c8c9b845ca9d29dad:d1467f7d-3360-4d28-8fef-9025fea31956::"
 
     # Conectar al backend de IBM usando el nuevo canal y las credenciales actualizadas
-    simulator.connect_to_ibm_backend(
-        token=my_api_token,
-        backend_name="ibm_brisbane", # O el nombre del backend que prefieras, o None
-        # El canal 'ibm_quantum' está obsoleto. Se usa 'ibm_quantum_platform'.
-        channel="ibm_quantum_platform"
-    )
+    #simulator.connect_to_ibm_backend(
+    #    token=my_api_token,
+     #   backend_name="ibm_torino", # O el nombre del backend que prefieras, o None
+    #    # El canal 'ibm_quantum' está obsoleto. Se usa 'ibm_quantum_platform'.
+    #    #Para correr en el simulador poner por favor 
+    #    channel="ibm_quantum_platform"
+    #)
 
     print("\nEJECUTANDO CIRCUITO CUÁNTICO CON COMPUERTAS MCRY")
     simulator.run()
