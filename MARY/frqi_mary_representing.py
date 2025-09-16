@@ -314,7 +314,7 @@ class FRQI_MARY_Simulator:
         plt.tight_layout()
         plt.show()
     
-    def reconstruct_image(self):
+    def reconstruct_image(self, filename="Result_mary.png"):
         if not self.results:
             raise RuntimeError("Primero debes ejecutar analyze_results() para obtener resultados.")
 
@@ -351,6 +351,7 @@ class FRQI_MARY_Simulator:
         for (j, i), val in np.ndenumerate(reconstructed_pixels):
             axes[1].text(i, j, f'{val}', ha='center', va='center', color='red', fontsize=12)
 
+        fig.savefig(filename)
         plt.tight_layout()
         plt.show()
 
