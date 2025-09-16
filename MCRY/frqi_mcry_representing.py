@@ -91,7 +91,7 @@ class FRQI_MCRY_Simulator:
         """
         try:
             self.service = QiskitRuntimeService(channel=channel, token=token)
-            print(f"✅ Conexión establecida con IBM Quantum Platform (canal: {channel}).")
+            print(f" Conexión establecida con IBM Quantum Platform (canal: {channel}).")
 
             if backend_name:
                 self.backend = self.service.backend(backend_name)
@@ -107,13 +107,31 @@ class FRQI_MCRY_Simulator:
             print(f"🔌 Backend seleccionado: {self.backend.name} (Trabajos pendientes: {self.backend.status().pending_jobs})")
 
         except IBMRuntimeError as e:
-            print(f"❌ Error al conectar con IBM Quantum Platform: {e}")
+            print(f" Error al conectar con IBM Quantum Platform: {e}")
             self.service = None
             self.backend = None
         except Exception as e:
-            print(f"❌ Ocurrió un error inesperado durante la conexión: {e}")
+            print(f" Ocurrió un error inesperado durante la conexión: {e}")
             self.service = None
-            self.backend = None    
+            self.backend = None
+
+    def cu_gate_decomposition(self, qc, theta, phi, lam, control_qubit, target_qubit):
+        """
+        Construye una puerta de rotación U controlada (CU)
+        usando puertas CX y rotaciones de un solo qubit.
+    
+        Args:
+            qc (QuantumCircuit): El circuito cuántico.
+            theta (float): Ángulo de rotación theta.
+            phi (float): Ángulo de rotación phi.
+            lam (float): Ángulo de rotación lambda.
+            control_qubit (int): Índice del qubit de control.
+            target_qubit (int): Índice del qubit objetivo.
+        """
+        qc.p(lam, target_qubit)
+        qc.cx(control_qubit, target_qubit)
+        qc.p(-lam, target_qubit)
+        qc.u(theta, phi, lam, target_qubit) 
 
     def build_circuit(self):
         """
@@ -132,33 +150,20 @@ class FRQI_MCRY_Simulator:
         qc.h(qr[1])  # pos1 (q[1] es el MSB de la posición)
         qc.h(qr[2])  # pos0 (q[2] es el LSB de la posición)
 
-        # Los qubits de control son q[1] (más significativo) y q[2] (menos significativo)
-        control_qubits = [qr[1], qr[2]]
-        # El qubit objetivo es q[0]
-        target_qubit = qr[0]
+        x_flips = [False, True, True, False] # True means qc.x() is applied
+        angles = [(theta, 0, 0) for theta in self.thetas]
 
-        # Iterar sobre cada píxel (posición) y aplicar la rotación RY controlada
-        for i, theta in enumerate(self.thetas):
-
-            bin_str = format(i, '02b')
-            control_state = bin_str[0] + bin_str[1] # pos1_bit + pos0_bit
-
-            if bin_str[0] == '0':
-                qc.x(qr[1]) # Invertir q[1] si su bit de control es '0'
-            if bin_str[1] == '0':
-                qc.x(qr[2]) # Invertir q[2] si su bit de control es '0'
-
-            mary_gate = RYGate(theta).control(len(control_qubits))
-            qc.append(mary_gate, control_qubits + [target_qubit])
-
-
-            # Deshacer las puertas X aplicadas para la selección de posición
-            if bin_str[0] == '0':
+        # --- Bucle con la puerta CU ---
+        for i, (theta, phi, lam) in enumerate(angles):
+            # Aplica qc.x(qr[1]) si es necesario
+            if x_flips[i]:
                 qc.x(qr[1])
-            if bin_str[1] == '0':
-                qc.x(qr[2])
+
+            # Aplica la puerta CU con la función definida arriba
+            self.cu_gate_decomposition(qc, theta, phi, lam, qr[0], qr[2])
 
         # Medir todos los qubits y almacenar los resultados en los registros clásicos
+        qc.barrier(qr)
         qc.measure(qr, cr)
         self.qc = qc 
 
@@ -186,12 +191,12 @@ class FRQI_MCRY_Simulator:
                 pub_result = result[0]
                 self.counts = pub_result.data.c.get_counts()
 
-                print("✅ Resultados obtenidos del backend de IBM:")
+                print(" Resultados obtenidos del backend de IBM:")
                 print(self.counts)
 
             except Exception as e:
-                print(f"❌ Error al ejecutar en el backend de IBM: {e}")
-                print("⚠️ Volviendo al simulador local.")
+                print(f" Error al ejecutar en el backend de IBM: {e}")
+                print(" Volviendo al simulador local.")
                 self._run_local_simulator()
         else:
             print("\nBackend de IBM no disponible. Ejecutando en el simulador QASM local...")
@@ -207,10 +212,10 @@ class FRQI_MCRY_Simulator:
             job = simulator.run(transpiled_qc, shots=self.shots)
             result = job.result()
             self.counts = result.get_counts(transpiled_qc) 
-            print("✅ Resultados obtenidos del simulador QASM local:")
+            print(" Resultados obtenidos del simulador QASM local:")
             print(self.counts)
         except Exception as e:
-            print(f"❌ Error al ejecutar en el simulador local: {e}")
+            print(f" Error al ejecutar en el simulador local: {e}")
             self.counts = {} # Asegura que self.counts sea un diccionario vacío si el simulador falla
 
     def analyze_results(self):
@@ -258,9 +263,9 @@ class FRQI_MCRY_Simulator:
             # --- CORRECCIÓN CLAVE AQUÍ ---
             # Para FRQI, la probabilidad de medir |1> es (normalized_intensity)^2
             # Por lo tanto, la intensidad normalizada reconstruida es la raíz cuadrada de P(1).
-
-            reconstructed_intensity_norm = np.sqrt(p1)
-            reconstructed_intensity = reconstructed_intensity_norm * self.max_intensity
+            frac = p0 / (p1+p0)
+            reconstructed_intensity_norm = np.sqrt(frac)
+            reconstructed_intensity = np.arccos(reconstructed_intensity_norm) * self.max_intensity*2/np.pi
 
             self.results[target_pos_str] = {
                 '0': p0,

@@ -1,5 +1,4 @@
 from frqi_mcry_representing import FRQI_MCRY_Simulator
-#from frqi_mary_representing import FRQI_MARY_Simulator
 
 if __name__ == "__main__":
     # Define las intensidades de los píxeles (ej. para una imagen 2x2)
