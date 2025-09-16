@@ -1,4 +1,4 @@
-from frqi_mary_representing import FRQI_MARY_Simulator
+from frqi_mary_corr import FRQI_MARY_CORR_Simulator
 
 if __name__ == "__main__":
     # Define las intensidades de los píxeles (ej. para una imagen 2x2)
@@ -6,7 +6,7 @@ if __name__ == "__main__":
 
     # Crea una instancia del simulador
     n_shots = 8192 #8192
-    simulator = FRQI_MARY_Simulator(intensities=my_intensities, shots=n_shots)
+    simulator = FRQI_MARY_CORR_Simulator(intensities=my_intensities, shots=n_shots)
 
     # --- Conexión a una computadora cuántica real de IBM (Actualizado 2025) ---
     my_api_token = "6_qSMCprV_-VjF3prep9iooxdmBQIPXdUANfz9h9Z7gH" # Reemplaza con tu token real de IBM Cloud
@@ -19,8 +19,8 @@ if __name__ == "__main__":
     simulator.connect_to_ibm_backend(
         token=my_api_token,
         backend_name="ibm_torino", # O el nombre del backend que prefieras, o None
-    #    # El canal 'ibm_quantum' está obsoleto. Se usa 'ibm_quantum_platform'.
-    #    #Para correr en el simulador poner por favor 
+        # El canal 'ibm_quantum' está obsoleto. Se usa 'ibm_quantum_platform'.
+        #Para correr en el simulador poner por favor 
         channel="ibm_quantum_platform"
     )
 

@@ -1,5 +1,4 @@
 # Importaciones de librerías comunes
-# Importaciones de librerías comunes
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -22,10 +21,16 @@ from qiskit_ibm_runtime.exceptions import IBMRuntimeError
 from importlib.metadata import version
 version("qiskit")
 
-class FRQI_MARY_Simulator:
+
+
+class FRQI_MARY_CORR_Simulator:
     """
-    Simulador del algoritmo FRQI usando la implementación MARY del artículo,
-    con los métodos de pre y postprocesamiento corregidos según el estudio.
+    Simulador del algoritmo FRQI (Flexible Representation of Quantum Images) con corrección de errores de 3 qubits.
+
+    Esta clase permite codificar una imagen (representada por intensidades de píxeles)
+    en un circuito cuántico utilizando la codificación FRQI, ejecutar el circuito
+    en un simulador local o en una computadora cuántica real de IBM, y analizar
+    los resultados.
     """
 
     def __init__(self, intensities=None, max_intensity=255, shots=8000, n=2):
@@ -62,25 +67,37 @@ class FRQI_MARY_Simulator:
 
     def calculate_thetas(self, intensities):
         """
-        ## CORRECCIÓN ##
-        Implementa la transformación lineal para convertir intensidades en ángulos,
-        según la Ecuación (8) del artículo.
+        Calcula los ángulos theta para la codificación FRQI a partir de las intensidades.
+
+        Args:
+            intensities (list): Lista de intensidades de píxeles.
+
+        Returns:
+            list: Lista de ángulos theta en radianes.
         """
-        # Normaliza intensidades al rango [0, 1] y aplica la transformación
-        thetas = [(i / self.max_intensity) * (np.pi / 2) for i in intensities]
+        # Normaliza intensidades al rango [0, 1]
+        intensity_norm = [i / self.max_intensity for i in intensities]
+        #intensity_norm = [min(1.0, max(-1.0, i)) for i in intensity_norm]
+        # Calcula thetas con la fórmula FRQI: theta = 2 * arcsin(intensidad_normalizada)
+        #thetas = [np.arcsin(i) for i in intensity_norm]
+        thetas = [(np.pi/2)*i for i in intensity_norm]
         return thetas
 
     def connect_to_ibm_backend(self, token: str, backend_name: str = None, channel: str = "ibm_quantum_platform"):
         """
-        Conecta al servicio IBM Quantum y guarda el objeto backend.
+        ## ACTUALIZACIÓN JULIO 2025 ##
+        Conecta al servicio IBM Quantum.
+        El 'channel' por defecto es ahora 'ibm_quantum_platform', que unifica
+        el acceso gratuito (Open Plan) y de pago. El antiguo 'ibm_quantum' está obsoleto.
         """
         try:
             self.service = QiskitRuntimeService(channel=channel, token=token)
-            print(f"Conexión establecida con IBM Quantum Platform (canal: {channel}).")
+            print(f" Conexión establecida con IBM Quantum Platform (canal: {channel}).")
 
             if backend_name:
                 self.backend = self.service.backend(backend_name)
             else:
+                # Lógica para encontrar el mejor backend disponible
                 backends = self.service.backends(simulator=False, operational=True)
                 real_backends = [b for b in backends if b.num_qubits >= 3]
                 if real_backends:
@@ -91,11 +108,11 @@ class FRQI_MARY_Simulator:
             print(f"Backend seleccionado: {self.backend.name} (Trabajos pendientes: {self.backend.status().pending_jobs})")
 
         except IBMRuntimeError as e:
-            print(f"Error al conectar con IBM Quantum Platform: {e}")
+            print(f" Error al conectar con IBM Quantum Platform: {e}")
             self.service = None
             self.backend = None
         except Exception as e:
-            print(f"Ocurrió un error inesperado durante la conexión: {e}")
+            print(f" Ocurrió un error inesperado durante la conexión: {e}")
             self.service = None
             self.backend = None
 
@@ -126,31 +143,62 @@ class FRQI_MARY_Simulator:
         #Aplicando el segundo CNOT
         qc.cx(control_qubits[1], target_qubit)
 
+        
     def build_circuit(self):
         """
-        ## CORRECCIÓN ##: Se eliminó 'self.' al llamar a las clases de Qiskit.
-        """
-        qr = QuantumRegister(3, name='q')
-        cr = ClassicalRegister(3, name='c')
-        qc = QuantumCircuit(qr, cr, name="FRQI_MARY")
+        Construye el circuito cuántico FRQI con corrección de errores de 3 qubits.
 
+        El circuito ahora usa 5 qubits:
+        - q[0], q[3], q[4]: qubits de color codificados (q[0] es el lógico)
+        - q[1], q[2]: qubits de posición (para 4 píxeles, 2x2 imagen)
+        """
+        # Crear registros cuánticos y clásicos
+        qr = QuantumRegister(5, name='q')  # 5 qubits
+        cr = ClassicalRegister(3, name='c')  # 3 bits clásicos para la medición final
+        
+        # 2 bits clásicos adicionales para el síndrome (q[3] y q[4])
+        cr_syndrome = ClassicalRegister(2, name='syndrome') 
+        qc = QuantumCircuit(qr, cr_syndrome, cr, name="FRQI_MCRY_QEC")
+
+        # --- Parte 1: Codificación de Estado FRQI ---
+        
         # Aplicar Hadamard a los qubits de posición para crear superposición
         qc.h(qr[1])  # pos1 (q[1] es el MSB de la posición)
         qc.h(qr[2])  # pos0 (q[2] es el LSB de la posición)
 
+        # Codificación del qubit de color q[0] en 3 qubits físicos (q[0], q[3], q[4])
+        qc.cx(qr[0], qr[3])
+        qc.cx(qr[0], qr[4])
+
+        # --- Parte 2: Aplicación de la compuerta FRQI con MC-RY ---
+        # Esta compuerta debe aplicarse a la representación lógica del estado
+        
+        # Aquí simplificamos aplicando la compuerta a los 3 qubits físicos.
+        # En una implementación real, se usarían compuertas tolerantes a fallos.
         control_qubits = [qr[1], qr[2]]
-        target_qubit = qr[0]
-
-        for i,theta in enumerate(self.thetas):
-
+        
+        for i, theta in enumerate(self.thetas):
             self.mary_gate(
-                qc = qc, 
-                angle = 2*theta, 
-                control_qubits = control_qubits,
-                target_qubit = target_qubit
+                qc=qc,
+                angle=2*theta,
+                control_qubits=control_qubits,
+                target_qubit=qr[0]
             )
-
-            # Apply X gates based on the image's pattern.
+            # Replicar la operación en los qubits de codificación
+            self.mary_gate(
+                qc=qc,
+                angle=2*theta,
+                control_qubits=control_qubits,
+                target_qubit=qr[3]
+            )
+            self.mary_gate(
+                qc=qc,
+                angle=2*theta,
+                control_qubits=control_qubits,
+                target_qubit=qr[4]
+            )
+            
+            # Aplicar X gates basados en el patrón de la imagen.
             if i == 0:
                 qc.x(qr[1])
             elif i == 1:
@@ -159,61 +207,85 @@ class FRQI_MARY_Simulator:
             elif i == 2:
                 qc.x(qr[1])
 
-        # Medir todos los qubits y almacenar los resultados en los registros clásicos
+        # --- Parte 3: Detección y corrección de errores (Decodificación) ---
+        qc.barrier()
+        
+        # Síndrome de medición
+        qc.cx(qr[0], qr[3])
+        qc.cx(qr[0], qr[4])
+        qc.measure([qr[3], qr[4]], [cr_syndrome[0], cr_syndrome[1]])
+
+        # Corrección de errores
+        with qc.if_test((cr_syndrome, 1)):
+            qc.x(qr[0])
+        with qc.if_test((cr_syndrome, 2)):
+            qc.x(qr[3])
+        with qc.if_test((cr_syndrome, 3)):
+            qc.x(qr[4])
+
+        # Medición final de los qubits
         qc.barrier(qr)
-        qc.measure(qr, cr)
-        self.qc = qc
+        qc.measure(qr[0], cr[0])
+        qc.measure(qr[1], cr[1])
+        qc.measure(qr[2], cr[2])
+
+        self.qc = qc 
 
     def run(self):
-        """Ejecuta el circuito en el backend configurado."""
         self.build_circuit()
         self.counts = None
 
         if self.backend and self.service:
             print(f"\nEjecutando en el backend de IBM: {self.backend.name} con {self.shots} shots...")
             try:
+                # Se inicializa el Sampler especificando el 'mode' de ejecución.
                 sampler = Sampler(mode=self.backend)
-                transpiled_qc = transpile(self.qc, self.backend)
                 
+                transpiled_qc = transpile(self.qc, self.backend)
+
+                # ## CORRECCIÓN FINAL ##
+                # El método run espera una LISTA de circuitos.
                 job = sampler.run([transpiled_qc], shots=self.shots)
                 print(f"Job ID: {job.job_id()} enviado a {self.backend.name}.")
                 print("Esperando resultados...")
                 
                 result = job.result()
                 
+                # Como enviamos una lista con un circuito, obtenemos el primer resultado.
                 pub_result = result[0]
                 self.counts = pub_result.data.c.get_counts()
 
-                print("Resultados obtenidos del backend de IBM:")
+                print(" Resultados obtenidos del backend de IBM:")
                 print(self.counts)
 
             except Exception as e:
-                print(f"Error al ejecutar en el backend de IBM: {e}")
-                print("Volviendo al simulador local.")
+                print(f" Error al ejecutar en el backend de IBM: {e}")
+                print(" Volviendo al simulador local.")
                 self._run_local_simulator()
         else:
             print("\nBackend de IBM no disponible. Ejecutando en el simulador QASM local...")
             self._run_local_simulator()
 
     def _run_local_simulator(self):
-        """Ejecuta el circuito en el simulador local."""
+        """
+        Ejecuta el circuito cuántico en el simulador QASM local de Qiskit Aer.
+        """
         try:
-            simulator = Aer.get_backend('qasm_simulator')
+            simulator = Aer.get_backend('aer_simulator') # <-- AQUI ESTA EL CAMBIO
             transpiled_qc = transpile(self.qc, simulator)
             job = simulator.run(transpiled_qc, shots=self.shots)
             result = job.result()
             self.counts = result.get_counts(transpiled_qc) 
-            print("Resultados obtenidos del simulador QASM local:")
+            print(" Resultados obtenidos del simulador QASM local:")
             print(self.counts)
         except Exception as e:
-            print(f"Error al ejecutar en el simulador local: {e}")
-            self.counts = {}
+            print(f" Error al ejecutar en el simulador local: {e}")
+            self.counts = {} # Asegura que self.counts sea un diccionario vacío si el simulador falla
 
     def analyze_results(self):
         """
-        ## CORRECCIÓN ##
-        Analiza los resultados usando la Ecuación (10) del artículo y una
-        lógica de bits estandarizada.
+        Analiza los resultados de las mediciones del circuito para extraer
+        las probabilidades de color para cada posición y reconstruir la intensidad.
         """
         if self.counts is None:
             raise RuntimeError("Primero debes ejecutar run() para obtener resultados.")
@@ -224,12 +296,13 @@ class FRQI_MARY_Simulator:
         self.plot_probabilities_data = {} # Reinicializar aquí
 
         positions_order = ['00', '01', '10', '11'] # Orden de las intensidades originales
+        prob = []
 
         for i, target_pos_str in enumerate(positions_order):
 
             filtered_counts = {'0': 0, '1': 0} # Inicializar conteos para '0' y '1' del qubit de color
             #print(filtered_counts)
-           
+
             for bitstring, count in self.counts.items():
                 color_bit = bitstring[2] # q[0]
                 pos1_bit = bitstring[1] # q[1]
@@ -267,7 +340,7 @@ class FRQI_MARY_Simulator:
             print(f"   Posición |{target_pos_str}⟩ (de q[1]q[2] medido):")
             print(f"     Probabilidad de 0 (medido en q[2]): {p0:.4f}")
             print(f"     Probabilidad de 1 (medido en q[1]): {p1:.4f}")
-            
+
     def plot_histogram(self):
         """
         Muestra un histograma de los conteos de medición del circuito.
@@ -313,7 +386,7 @@ class FRQI_MARY_Simulator:
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
         plt.show()
-    
+
     def reconstruct_image(self):
         if not self.results:
             raise RuntimeError("Primero debes ejecutar analyze_results() para obtener resultados.")
@@ -354,6 +427,7 @@ class FRQI_MARY_Simulator:
         plt.tight_layout()
         plt.show()
 
+
     def print_state_table(self):
         """
         Muestra una tabla con las intensidades normalizadas, ángulos theta,
@@ -381,7 +455,7 @@ class FRQI_MARY_Simulator:
         print("\nTabla de Estados Esperados (Ideal):")
         print(df.to_string(index=False))
 
-    def draw_circuit(self, output='mpl', filename='quantum_circuit.png', style=None):
+    def draw_circuit(self, output='mpl', filename='quantum_circuit_corr.png', style=None):
         """
         Dibuja el circuito cuántico y lo guarda en un archivo.
 
