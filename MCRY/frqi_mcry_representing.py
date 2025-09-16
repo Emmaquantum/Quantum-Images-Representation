@@ -253,7 +253,6 @@ class FRQI_MCRY_Simulator:
         self.plot_probabilities_data = {} # Reinicializar aquí
 
         positions_order = ['00', '01', '10', '11'] # Orden de las intensidades originales
-        prob = []
 
         for i, target_pos_str in enumerate(positions_order):
 
@@ -344,7 +343,7 @@ class FRQI_MCRY_Simulator:
         plt.tight_layout()
         plt.show()
 
-    def reconstruct_image(self):
+    def reconstruct_image(self, filename="restult_mcry.png"):
         if not self.results:
             raise RuntimeError("Primero debes ejecutar analyze_results() para obtener resultados.")
 
@@ -381,6 +380,8 @@ class FRQI_MCRY_Simulator:
         for (j, i), val in np.ndenumerate(reconstructed_pixels):
             axes[1].text(i, j, f'{val}', ha='center', va='center', color='red', fontsize=12)
 
+
+        fig.savefig(filename)
         plt.tight_layout()
         plt.show()
 

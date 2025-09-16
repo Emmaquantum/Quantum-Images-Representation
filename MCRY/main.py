@@ -19,8 +19,8 @@ if __name__ == "__main__":
     #simulator.connect_to_ibm_backend(
     #    token=my_api_token,
     #    backend_name="ibm_torino", # O el nombre del backend que prefieras, o None
-    #    # El canal 'ibm_quantum' está obsoleto. Se usa 'ibm_quantum_platform'.
-    #    #Para correr en el simulador poner por favor 
+        # El canal 'ibm_quantum' está obsoleto. Se usa 'ibm_quantum_platform'.
+        #Para correr en el simulador poner por favor 
     #    channel="ibm_quantum_platform"
     #)
 
