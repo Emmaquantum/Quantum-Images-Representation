@@ -24,7 +24,7 @@ if __name__ == "__main__":
         channel="ibm_quantum_platform"
     )
 
-    print("\nEJECUTANDO CIRCUITO CUÁNTICO CON COMPUERTAS MCRY")
+    print("\nEJECUTANDO CIRCUITO CUÁNTICO CON COMPUERTAS MARY")
     simulator.run()
 
     # El resto del flujo de trabajo permanece igual
