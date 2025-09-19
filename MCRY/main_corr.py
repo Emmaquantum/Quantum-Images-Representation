@@ -1,3 +1,5 @@
+import os
+import dotenv
 from frqi_mcry_correct import FRQI_MCRY_Simulator
 
 if __name__ == "__main__":
@@ -8,12 +10,15 @@ if __name__ == "__main__":
     n_shots = 8192 #8192
     simulator = FRQI_MCRY_Simulator(intensities=my_intensities, shots=n_shots)
 
+    # cargamos las variables de entorno
+    dotenv.load_dotenv()
+
     # --- Conexión a una computadora cuántica real de IBM (Actualizado 2025) ---
-    my_api_token = "6_qSMCprV_-VjF3prep9iooxdmBQIPXdUANfz9h9Z7gH" # Reemplaza con tu token real de IBM Cloud
+    my_api_token = os.getenv('my_api_token') # Reemplaza con tu token real de IBM Cloud
     
     # Opcional: Proporciona tu instancia (CRN) para optimizar la búsqueda de backends.
     # Si no la pones, Qiskit la buscará por ti.
-    my_instance = "crn:v1:bluemix:public:quantum-computing:us-east:a/f1d7b6cfa7094a2c8c9b845ca9d29dad:d1467f7d-3360-4d28-8fef-9025fea31956::"
+    my_instance = os.getenv('my_instance')
 
     # Conectar al backend de IBM usando el nuevo canal y las credenciales actualizadas
     simulator.connect_to_ibm_backend(
